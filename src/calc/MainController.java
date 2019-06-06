@@ -1,7 +1,11 @@
 package calc;
 
+import java.util.HashMap;
+
+import calc.model.LocalModel;
 import calc.model.Model;
 import calc.model.Model.FormatException;
+import calc.model.WebModel;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
@@ -17,28 +21,12 @@ import javafx.scene.control.TextField;
  *
  */
 public class MainController {
-	/**
-	 * Wyj¹tek, rzucany podczas b³êdu walidacji wpisanych wartoœci. Klasa jest
-	 * prywatna, wyj¹tki s¹ obs³ugiwane w ciele klasy MainController
-	 * 
-	 * @author
-	 * 
-	 */
-	private class ValidationException extends Exception {
-		private static final long serialVersionUID = 1L;
-
-		/**
-		 * Konstruktor wyj¹tku.
-		 * 
-		 * @param error Opis b³êdu, zwracany przy getValue().
-		 */
-		ValidationException(String error) {
-			super(error);
-		}
-	}
+	private String API_URI = "http://localhost:8080/arithmeter/calculate";
 
 	@FXML
 	private TextField text_field;
+	@FXML
+	private Button button_model;
 	@FXML
 	private Button button_AC;
 	@FXML
@@ -62,6 +50,10 @@ public class MainController {
 	@FXML
 	private Button button_power;
 	@FXML
+	private Button button_open;
+	@FXML
+	private Button button_close;
+	@FXML
 	private Button button_0;
 	@FXML
 	private Button button_1;
@@ -82,25 +74,11 @@ public class MainController {
 	@FXML
 	private Button button_9;
 
-	private Double remembered = 0.0;
-	private String action = "";
-	private Boolean need_clear = false;
+	private String currentModel;
 
-	private Model model = new Model();
+	private HashMap<String, Model> models = new HashMap<String, Model>();
 
-	/**
-	 * Metoda walidacji wpisanych wartoœci.
-	 * 
-	 * @exception ValidationEException Wyj¹tek jest zg³aszany, w przypadku próby
-	 *                                 dzielenia przez zero (równie¿ przy operacji
-	 *                                 modulo.
-	 * 
-	 * @param second_number Parametr drugiej zmienneej uczestnicz¹cej w operacji.
-	 */
-	private void validate(Double second_number) throws ValidationException {
-		if ((action.equals("/") || action.equals("%")) && second_number == 0.0)
-			throw new ValidationException("Cannot divide by zero!");
-	}
+	private boolean needClear;
 
 	/**
 	 * Funkcja licz¹ca, wywo³uj¹ca na model operacjee liczenia. Obs³uguje
@@ -108,41 +86,21 @@ public class MainController {
 	 * wyœwietla komunikaty o b³êdach za pomoc¹ funkcji error_alert().
 	 */
 	private void calculate() {
-		if (!action.equals("")) {
-			try {
-				if (action.equals("!"))
-					remembered = model.calculate(remembered, action);
-				else {
-					Double second_number = Double.parseDouble(text_field.getText());
-					validate(second_number);
-
-					remembered = model.calculate(remembered, second_number, action);
-				}
-			} catch (ValidationException e) {
-				error_alert(e.getMessage());
-			} catch (FormatException e) {
-				error_alert(e.getMessage());
-				clear();
-			} catch (NumberFormatException e) {
-				error_alert("Well, you have to decide on operation, my dear.");
-				clear();
-			}
-		} else if (text_field.getText().length() == 0)
-			error_alert("Please, provide us a number first.");
-		else
-			remembered = Double.parseDouble(text_field.getText());
+		try {
+			String result = Double.toString(models.get(currentModel).calculate(text_field.getText()));
+			text_field.setText(result);
+		} catch (FormatException e) {
+			error_alert(
+					"Something went wrong! Please, check format of your equasion, if it's correct and compatibile with programs functionality.");
+		}
 	}
 
 	/**
-	 * Funkcja s³urz¹ca do czyszczenia kalkulatora. Czyœci wypisywany teekst,
-	 * ostatni¹ zapamiêtana wartoœæ oraz akcjêê, a tak¿e resetuje wskazanie na
-	 * potrzebê czyszczenia.
+	 * Funkcja s³urz¹ca do czyszczenia kalkulatora. Czyœci wypisywany teekst.
 	 */
 	private void clear() {
 		text_field.setText("");
-		remembered = 0.0;
-		action = "";
-		need_clear = false;
+		needClear = false;
 	}
 
 	/**
@@ -169,16 +127,30 @@ public class MainController {
 	 * specjalnej metodze dzia³ania.
 	 */
 	public void initialize() {
+		currentModel = "web";
+		models.put("web", new WebModel(API_URI));
+		models.put("local", new LocalModel());
+
+		button_model.setText(currentModel);
+		button_model.setOnAction(e -> {
+			if (currentModel == "web")
+				currentModel = "local";
+			else
+				currentModel = "web";
+
+			button_model.setText(currentModel);
+		});
+
 		button_AC.setOnAction(e -> {
 			clear();
 		});
 
-		Button[] numeric_buttons = { button_0, button_1, button_2, button_3, button_4, button_5, button_6, button_7,
-				button_8, button_9 };
+		Button[] text_buttons = { button_0, button_1, button_2, button_3, button_4, button_5, button_6, button_7,
+				button_8, button_9, button_coma, button_open, button_close };
 
-		for (Button button : numeric_buttons) {
+		for (Button button : text_buttons) {
 			button.setOnAction(ee -> {
-				if (need_clear)
+				if (needClear)
 					clear();
 
 				text_field.setText(text_field.getText() + button.getText());
@@ -190,17 +162,15 @@ public class MainController {
 
 		for (Button button : action_buttons) {
 			button.setOnAction(ee -> {
-				if (!need_clear)
-					calculate();
+				if (needClear)
+					clear();
 
-				need_clear = false;
-				action = button.getText();
-				text_field.setText("");
+				text_field.setText(text_field.getText() + " " + button.getText() + " ");
 			});
 		}
 
 		button_switch.setOnAction(e -> {
-			if (need_clear)
+			if (needClear)
 				clear();
 
 			String text = text_field.getText();
@@ -211,23 +181,10 @@ public class MainController {
 			}
 		});
 
-		button_coma.setOnAction(e -> {
-			if (need_clear)
-				clear();
-
-			String text = text_field.getText();
-
-			if (text.contains("."))
-				error_alert("Can't use comma twice!");
-			else
-				text_field.setText(text + ".");
-		});
-
 		button_equals.setOnAction(e -> {
 			calculate();
-
-			text_field.setText(remembered.toString());
-			need_clear = true;
+			needClear = true;
 		});
 	}
+
 }
